@@ -1,7 +1,13 @@
+# Android Studio / IntelliJ
 *.iml
 .gradle
 /local.properties
-/.idea
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
 .DS_Store
 /build
 /captures
@@ -9,5 +15,21 @@
 .cxx
 local.properties
 
-# Firebase config (contains sensitive keys)
+# App specific
+app/build/
+**/build/
+
+# Firebase
 google-services.json
+
+# Signing files
+*.jks
+*.keystore
+
+# Built variants
+*.apk
+*.aab
+
+# OS specific
+.DS_Store
+Thumb.db
