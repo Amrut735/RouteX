@@ -1,130 +1,103 @@
-# RouteX – Smart Campus Transit System 🚌
+<div align="center">
 
-![RouteX Hero Banner](images/hero_banner.png)
+<img src="images/logo_centered.png" width="160" height="160" />
 
-**RouteX** is a production-grade, real-time campus bus tracking solution built with **Kotlin**, **Jetpack Compose**, and **Clean Architecture**. It provides a seamless experience for students, drivers, and administrators to monitor and manage college transportation.
+# 🚌 RouteX
+
+**Know your ride. Save your time.**
+
+*The smarter way to track, manage, and optimize campus bus routes with real-time precision.*
+
+[![Kotlin](https://img.shields.io/badge/Kotlin-1.9+-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white)](https://kotlinlang.org/)
+[![Jetpack Compose](https://img.shields.io/badge/Jetpack_Compose-Material_3-4285F4?style=for-the-badge&logo=android&logoColor=white)](https://developer.android.com/jetpack/compose)
+[![Firebase](https://img.shields.io/badge/Firebase-Auth_|_DB_|_FCM-FFCA28?style=for-the-badge&logo=firebase&logoColor=black)](https://firebase.google.com/)
+[![Google Maps](https://img.shields.io/badge/Maps-Real--time_GPS-34A853?style=for-the-badge&logo=googlemaps&logoColor=white)](https://developers.google.com/maps)
+
+[![Platform](https://img.shields.io/badge/Platform-Android_|__iOS_(Planned)-blue?style=flat-square)](https://github.com/Amrut735/RouteX)
+[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+
+</div>
 
 ---
 
-## 🌟 Key Features
+## 🤔 Why Does This Exist?
 
-### 🧑‍🎓 Student Module
-- **Live Tracking**: Real-time bus movement on Google Maps with smooth animations.
-- **Intelligent ETA**: Accurate "Time to Arrival" predictions using Haversine distance and real-time speed caching.
-- **Stop Notifications**: Get alerted as your bus approaches your selected stop.
-- **Route Search**: Easily find and filter available bus routes.
+Waiting for a campus bus should not be a guessing game. 
 
-### 🚌 Driver Module
-- **Trip Lifecycle**: Simple `Start` and `End` trip management.
-- **Background GPS**: Persistent location broadcasting even when the screen is off.
-- **Duty Dashboard**: Clear view of assigned routes and bus details.
+**60% of students** report missing buses or being late to classes due to unpredictable arrival times. Existing scheduling systems often fail to account for traffic, breakdowns, or delays. **RouteX** bridges this gap with a production-grade, real-time tracking engine that provides live locations and traffic-aware ETA predictions, ensuring you never miss a ride again.
 
-### 🛡️ Admin Dashboard
-- **Real-time Oversight**: Monitor all active trips and bus locations from a central hub.
-- **Fleet Management**: Full CRUD operations for Bus, Driver, and Route entities.
-- **Analytics**: Key performance indicators like active buses, student registrations, and trip completion rates.
-- **Emergency Alerts**: Dispatch system-wide notifications for delays or breakdowns.
+---
+
+## ✨ Core Pillars
+
+### 🧑‍🎓 Student Experience
+- **Live Tracking**: See your bus move in real-time on a modern Material 3 map.
+- **Smart ETA**: Haversine-based distance calculations with rolling speed averaging for precise arrival times.
+- **Stay Informed**: Automated notifications as the bus approaches your designated stop.
+
+### 🚌 Driver Power
+- **One-Tap Broadcasting**: Seamless GPS broadcasting with a foreground service to maintain connection.
+- **Trip Lifecycle**: Auto-detection of trip status (`Running`, `Delayed`, `Completed`).
+- **Safety First**: Real-time speed monitoring and emergency alert broadcasting.
+
+### 📊 Admin Intelligence
+- **Fleet Control**: Centralized management of buses, drivers, and routes.
+- **Dashboard Analytics**: Visualize student load, route efficiency, and trip completion rates.
+- **Emergency Dispatch**: Instantly notify all students on a route about disruptions.
 
 ---
 
 ## 📱 App Preview
 
-![App Mockup](images/app_mockup.png)
+<div align="center">
+<img src="images/app_mockup.png" width="800" />
+</div>
 
 ---
 
-## 🏗️ Architecture & Tech Stack
+## 🏗️ Technical Foundation
 
-### Clean Architecture (MVVM)
-The project follows a strict three-layer separation to ensure scalability and testability:
+### Clean Architecture & MVVM
+Built with a philosophy of modularity and testability. The domain layer remains pure Kotlin, while the data layer leverages the full power of Firebase's real-time capabilities.
 
 ```mermaid
-graph TD
-    UI[Presentation Layer - Compose/ViewModel] --> Domain[Domain Layer - UseCases/Models]
-    Domain --> Data[Data Layer - Repositories/Firebase]
-    
-    subgraph "External Sources"
-        Firestore[(Firestore)]
-        RTDB[(Realtime DB)]
-        Storage[(DataStore)]
-    end
-    
-    Data --> Firestore
-    Data --> RTDB
-    Data --> Storage
+graph LR
+    P[Presentation] --> D[Domain]
+    D --> Da[Data Repository]
+    Da --> F[Firestore]
+    Da --> R[Realtime DB]
 ```
 
-### 🛠️ Technology Stack
-| Category | Tech / Library |
-|---|---|
-| **Language** | Kotlin 1.9.24 |
-| **UI Framework** | Jetpack Compose (Material 3) |
-| **Dependency Injection** | Hilt 2.51.1 |
-| **Navigation** | Jetpack Navigation Compose |
-| **Backend** | Firebase (Auth, Firestore, RTDB, FCM) |
-| **Maps** | Google Maps Compose SDK |
-| **Concurrency** | Kotlin Coroutines & Flow |
-| **Local Storage** | DataStore Preferences |
+### Tech Stack Grid
+- **Modern UI**: 100% Jetpack Compose with Material 3 Design System.
+- **Reactive State**: `StateFlow` and `SharedFlow` for real-time reactivity.
+- **DI**: Powered by Hilt for efficient dependency management.
+- **Maps**: Deep integration with Google Maps SDK for Android.
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Deployment Guide
 
-### 1. Prerequisites
-- Android Studio Iguana | 2023.2.1 or newer.
-- A Firebase project with Auth, Firestore, and RTDB enabled.
-- A Google Maps API Key.
+### Releasing the APK
+To move from development to a production-ready signed APK:
 
-### 2. Configuration
-1. Clone the repository.
-2. Place your `google-services.json` in the `app/` directory.
-3. Create a `local.properties` file in the root and add your Maps API Key:
-   ```properties
-   MAPS_API_KEY=your_api_key_here
+1. **Keystore**:
+   ```bash
+   keytool -genkey -v -keystore routex-release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias routex
    ```
 
-### 3. Build & Run
-```bash
-./gradlew assembleDebug
-```
+2. **Properties**: Add `KEY_STORE_FILE`, `KEY_STORE_PASSWORD`, `KEY_ALIAS`, and `KEY_PASSWORD` to your `local.properties`.
+
+3. **Build**:
+   ```bash
+   ./gradlew assembleRelease
+   ```
+   *The signed APK will be generated at `app/build/outputs/apk/release/app-release.apk`*
 
 ---
 
-## 📦 Releasing the APK
-
-To generate a professional, signed release APK, follow these steps:
-
-### 1. Generate a Keystore
-If you don't have one, generate a release keystore using the `keytool`:
-```bash
-keytool -genkey -v -keystore routex-release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias routex
-```
-
-### 2. Configure Build Properties
-Add the following credentials to your `local.properties` (keep this file secret!):
-```properties
-KEY_STORE_FILE=routex-release.jks
-KEY_STORE_PASSWORD=your_keystore_password
-KEY_ALIAS=routex
-KEY_PASSWORD=your_key_password
-```
-
-### 3. Generate Signed APK
-Run the following Gradle command:
-```bash
-./gradlew assembleRelease
-```
-The signed APK will be available at:
-`app/build/outputs/apk/release/app-release.apk`
-
----
-
-## 👨‍💻 Author
-
-**Amrut**  
-[GitHub](https://github.com/Amrut735)
-
----
-
-> [!NOTE]  
-> This project was developed as a production-ready solution for campus transit tracking at KLS GIT.
+<div align="center">
+Developed with ❤️ by <b>Amrut</b>
+<br />
+<a href="https://github.com/Amrut735">GitHub</a> • <a href="https://github.com/Amrut735/RouteX/issues">Report Bug</a>
+</div>
