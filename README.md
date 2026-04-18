@@ -51,6 +51,12 @@ Waiting for a campus bus should not be a guessing game.
 
 <div align="center">
 <img src="images/app_mockup.png" width="800" />
+<br />
+<em>Live Tracking & Admin Dashboard Mockups</em>
+<br /><br />
+<img src="images/adb_install_mockup.png" width="800" />
+<br />
+<em>Streamlined Development: ADB Build & Install Lifecycle</em>
 </div>
 
 ---
