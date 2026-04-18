@@ -1,0 +1,116 @@
+rules_version = '2';
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  RouteX — Firestore Security Rules
+//
+//  Role hierarchy:  admin  >  driver  >  student
+//
+//  Strategy: Primary role check uses Firebase Auth custom claims (`token.role`),
+//  which are set server-side by the `setUserRole` Cloud Function on registration.
+//  A Firestore-lookup fallback is included so rules work even before the custom
+//  claim propagates (e.g., on first login before token refresh).
+// ═══════════════════════════════════════════════════════════════════════════════
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ────────────────────────────────────────────────────────────────
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Fast path: use custom claim set by Cloud Function (token is cached locally)
+    function roleFromClaim() {
+      return request.auth.token.get('role', '');
+    }
+
+    // Fallback: read role from Firestore (one Firestore read per rule evaluation —
+    // keep behind claim check to avoid extra reads when claim is already present)
+    function roleFromFirestore() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '');
+    }
+
+    function userRole() {
+      return roleFromClaim() != '' ? roleFromClaim() : roleFromFirestore();
+    }
+
+    function isAdmin()   { return isSignedIn() && userRole() == 'admin';   }
+    function isDriver()  { return isSignedIn() && userRole() == 'driver';  }
+    function isStudent() { return isSignedIn() && userRole() == 'student'; }
+
+    // Ownership check (used where each user only touches their own doc)
+    function isOwner(uid) { return isSignedIn() && request.auth.uid == uid; }
+
+    // Prevent role self-escalation: a field named 'role' must not be changed
+    // by the owner themselves (only the Cloud Function / admin can change it)
+    function roleUnchanged() {
+      return !('role' in request.resource.data.diff(resource.data).affectedKeys());
+    }
+
+    // ── users ─────────────────────────────────────────────────────────────────
+    // Any authenticated user can read/create their own profile.
+    // Users may update their own doc but CANNOT change their role field.
+    // Admins have full access.
+    match /users/{userId} {
+      allow read:   if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId);
+      allow update: if (isOwner(userId) && roleUnchanged()) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── routes ────────────────────────────────────────────────────────────────
+    // Students and drivers can read routes; only admins can modify them.
+    match /routes/{routeId} {
+      allow read:  if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ── buses ─────────────────────────────────────────────────────────────────
+    match /buses/{busId} {
+      allow read:  if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ── drivers ───────────────────────────────────────────────────────────────
+    // Drivers may update their own document (e.g., online status, location);
+    // only admins can create or delete driver records.
+    match /drivers/{driverId} {
+      allow read:   if isSignedIn();
+      allow create: if isAdmin();
+      allow update: if isAdmin() || (isDriver() && isOwner(driverId));
+      allow delete: if isAdmin();
+    }
+
+    // ── emergency_alerts ──────────────────────────────────────────────────────
+    // Students & drivers can read; only admins can create/modify.
+    match /emergency_alerts/{alertId} {
+      allow read:   if isSignedIn();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── subscriptions ─────────────────────────────────────────────────────────
+    // Students write their own ETA subscription; admins can read all.
+    match /subscriptions/{userId} {
+      allow read:  if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId);
+    }
+
+    // ── trips ─────────────────────────────────────────────────────────────────
+    // Students/admins can read all trips; drivers can create and update only
+    // their own trips (driverId must match auth uid).
+    match /trips/{tripId} {
+      allow read:   if isSignedIn();
+      allow create: if isDriver() && request.resource.data.driverId == request.auth.uid;
+      allow update: if isAdmin()
+                    || (isDriver() && resource.data.driverId == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    // ── Deny everything else ──────────────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

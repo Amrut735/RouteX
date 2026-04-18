@@ -1,0 +1,1330 @@
+package com.routex.app;
+
+import android.app.Activity;
+import android.app.Service;
+import android.view.View;
+import androidx.datastore.core.DataStore;
+import androidx.datastore.preferences.core.Preferences;
+import androidx.fragment.app.Fragment;
+import androidx.lifecycle.SavedStateHandle;
+import androidx.lifecycle.ViewModel;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
+import com.google.errorprone.annotations.CanIgnoreReturnValue;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.routex.app.admin.data.repository.AdminRepositoryImpl;
+import com.routex.app.admin.data.source.AlertDataSource;
+import com.routex.app.admin.data.source.BusDataSource;
+import com.routex.app.admin.data.source.DriverDataSource;
+import com.routex.app.admin.data.source.RouteAdminDataSource;
+import com.routex.app.admin.domain.usecase.AddBusUseCase;
+import com.routex.app.admin.domain.usecase.AddDriverUseCase;
+import com.routex.app.admin.domain.usecase.AddRouteUseCase;
+import com.routex.app.admin.domain.usecase.AssignBusUseCase;
+import com.routex.app.admin.domain.usecase.AssignDriverUseCase;
+import com.routex.app.admin.domain.usecase.DeleteBusUseCase;
+import com.routex.app.admin.domain.usecase.DeleteRouteUseCase;
+import com.routex.app.admin.domain.usecase.GetAllBusesUseCase;
+import com.routex.app.admin.domain.usecase.GetAllDriversUseCase;
+import com.routex.app.admin.domain.usecase.GetAllRoutesUseCase;
+import com.routex.app.admin.domain.usecase.GetAnalyticsUseCase;
+import com.routex.app.admin.domain.usecase.GetBusByIdUseCase;
+import com.routex.app.admin.domain.usecase.GetDriverByAuthUidUseCase;
+import com.routex.app.admin.domain.usecase.ObserveActiveAlertsUseCase;
+import com.routex.app.admin.domain.usecase.ResolveAlertUseCase;
+import com.routex.app.admin.domain.usecase.SeedBusesUseCase;
+import com.routex.app.admin.domain.usecase.SeedDriversUseCase;
+import com.routex.app.admin.domain.usecase.SeedRoutesUseCase;
+import com.routex.app.admin.domain.usecase.SendEmergencyAlertUseCase;
+import com.routex.app.admin.domain.usecase.UpdateBusUseCase;
+import com.routex.app.admin.domain.usecase.UpdateRouteUseCase;
+import com.routex.app.admin.presentation.analytics.AnalyticsViewModel;
+import com.routex.app.admin.presentation.analytics.AnalyticsViewModel_HiltModules;
+import com.routex.app.admin.presentation.buses.BusManagementViewModel;
+import com.routex.app.admin.presentation.buses.BusManagementViewModel_HiltModules;
+import com.routex.app.admin.presentation.dashboard.AdminDashboardViewModel;
+import com.routex.app.admin.presentation.dashboard.AdminDashboardViewModel_HiltModules;
+import com.routex.app.admin.presentation.emergency.EmergencyViewModel;
+import com.routex.app.admin.presentation.emergency.EmergencyViewModel_HiltModules;
+import com.routex.app.admin.presentation.manage.ManageRoutesViewModel;
+import com.routex.app.admin.presentation.manage.ManageRoutesViewModel_HiltModules;
+import com.routex.app.admin.presentation.routes.RouteEditorViewModel;
+import com.routex.app.admin.presentation.routes.RouteEditorViewModel_HiltModules;
+import com.routex.app.admin.presentation.trips.AdminTripsViewModel;
+import com.routex.app.admin.presentation.trips.AdminTripsViewModel_HiltModules;
+import com.routex.app.auth.data.repository.AuthRepositoryImpl;
+import com.routex.app.auth.domain.usecase.GetCurrentUserUseCase;
+import com.routex.app.auth.domain.usecase.SignInWithEmailUseCase;
+import com.routex.app.auth.domain.usecase.SignInWithGoogleUseCase;
+import com.routex.app.auth.domain.usecase.SignOutUseCase;
+import com.routex.app.auth.domain.usecase.SignUpDriverUseCase;
+import com.routex.app.auth.domain.usecase.SignUpWithEmailUseCase;
+import com.routex.app.auth.presentation.login.LoginViewModel;
+import com.routex.app.auth.presentation.login.LoginViewModel_HiltModules;
+import com.routex.app.auth.presentation.onboarding.OnboardingViewModel;
+import com.routex.app.auth.presentation.onboarding.OnboardingViewModel_HiltModules;
+import com.routex.app.auth.presentation.register.RegisterViewModel;
+import com.routex.app.auth.presentation.register.RegisterViewModel_HiltModules;
+import com.routex.app.auth.presentation.splash.SplashViewModel;
+import com.routex.app.auth.presentation.splash.SplashViewModel_HiltModules;
+import com.routex.app.core.data.UserPreferencesRepository;
+import com.routex.app.core.di.AppModule_ProvideDataStoreFactory;
+import com.routex.app.core.di.AppModule_ProvideFirebaseAuthFactory;
+import com.routex.app.core.di.AppModule_ProvideFirebaseDatabaseFactory;
+import com.routex.app.core.di.AppModule_ProvideFirebaseFirestoreFactory;
+import com.routex.app.core.firebase.FirebaseInitializer;
+import com.routex.app.core.location.LocationProvider;
+import com.routex.app.core.network.NetworkMonitor;
+import com.routex.app.core.notification.FcmTokenRepository;
+import com.routex.app.core.notification.NotificationHelper;
+import com.routex.app.core.notification.RouteXFcmService;
+import com.routex.app.core.notification.RouteXFcmService_MembersInjector;
+import com.routex.app.core.rbac.SessionViewModel;
+import com.routex.app.core.rbac.SessionViewModel_HiltModules;
+import com.routex.app.core.ui.ThemeViewModel;
+import com.routex.app.core.ui.ThemeViewModel_HiltModules;
+import com.routex.app.driver.data.repository.DriverRepositoryImpl;
+import com.routex.app.driver.data.service.LocationTrackingService;
+import com.routex.app.driver.data.service.LocationTrackingService_MembersInjector;
+import com.routex.app.driver.presentation.DriverMapViewModel;
+import com.routex.app.driver.presentation.DriverMapViewModel_HiltModules;
+import com.routex.app.driver.presentation.DriverViewModel;
+import com.routex.app.driver.presentation.DriverViewModel_HiltModules;
+import com.routex.app.eta.domain.usecase.CalculateEtaUseCase;
+import com.routex.app.eta.domain.usecase.ObserveEtaUseCase;
+import com.routex.app.eta.presentation.EtaViewModel;
+import com.routex.app.eta.presentation.EtaViewModel_HiltModules;
+import com.routex.app.maps.data.geofencing.GeofenceManager;
+import com.routex.app.maps.data.repository.MapsRepositoryImpl;
+import com.routex.app.maps.domain.usecase.GetBusLocationUseCase;
+import com.routex.app.maps.presentation.MapViewModel;
+import com.routex.app.maps.presentation.MapViewModel_HiltModules;
+import com.routex.app.student.data.repository.StudentRepositoryImpl;
+import com.routex.app.student.domain.usecase.GetRouteByIdUseCase;
+import com.routex.app.student.domain.usecase.GetRoutesUseCase;
+import com.routex.app.student.domain.usecase.MissedBusPredictionUseCase;
+import com.routex.app.student.presentation.boarding.AvailableBusesViewModel;
+import com.routex.app.student.presentation.boarding.AvailableBusesViewModel_HiltModules;
+import com.routex.app.student.presentation.boarding.BoardingSelectionViewModel;
+import com.routex.app.student.presentation.boarding.BoardingSelectionViewModel_HiltModules;
+import com.routex.app.student.presentation.dashboard.StudentDashboardViewModel;
+import com.routex.app.student.presentation.dashboard.StudentDashboardViewModel_HiltModules;
+import com.routex.app.student.presentation.routes.RoutesViewModel;
+import com.routex.app.student.presentation.routes.RoutesViewModel_HiltModules;
+import com.routex.app.trips.data.repository.TripRepositoryImpl;
+import com.routex.app.trips.domain.usecase.EndTripUseCase;
+import com.routex.app.trips.domain.usecase.ObserveActiveTripForRouteUseCase;
+import com.routex.app.trips.domain.usecase.ObserveAllTripsUseCase;
+import com.routex.app.trips.domain.usecase.ObserveTripUseCase;
+import com.routex.app.trips.domain.usecase.StartTripUseCase;
+import dagger.hilt.android.ActivityRetainedLifecycle;
+import dagger.hilt.android.ViewModelLifecycle;
+import dagger.hilt.android.internal.builders.ActivityComponentBuilder;
+import dagger.hilt.android.internal.builders.ActivityRetainedComponentBuilder;
+import dagger.hilt.android.internal.builders.FragmentComponentBuilder;
+import dagger.hilt.android.internal.builders.ServiceComponentBuilder;
+import dagger.hilt.android.internal.builders.ViewComponentBuilder;
+import dagger.hilt.android.internal.builders.ViewModelComponentBuilder;
+import dagger.hilt.android.internal.builders.ViewWithFragmentComponentBuilder;
+import dagger.hilt.android.internal.lifecycle.DefaultViewModelFactories;
+import dagger.hilt.android.internal.lifecycle.DefaultViewModelFactories_InternalFactoryFactory_Factory;
+import dagger.hilt.android.internal.managers.ActivityRetainedComponentManager_LifecycleModule_ProvideActivityRetainedLifecycleFactory;
+import dagger.hilt.android.internal.managers.SavedStateHandleHolder;
+import dagger.hilt.android.internal.modules.ApplicationContextModule;
+import dagger.hilt.android.internal.modules.ApplicationContextModule_ProvideContextFactory;
+import dagger.internal.DaggerGenerated;
+import dagger.internal.DoubleCheck;
+import dagger.internal.IdentifierNameString;
+import dagger.internal.KeepFieldType;
+import dagger.internal.LazyClassKeyMap;
+import dagger.internal.Preconditions;
+import dagger.internal.Provider;
+import java.util.Map;
+import java.util.Set;
+import javax.annotation.processing.Generated;
+
+@DaggerGenerated
+@Generated(
+    value = "dagger.internal.codegen.ComponentProcessor",
+    comments = "https://dagger.dev"
+)
+@SuppressWarnings({
+    "unchecked",
+    "rawtypes",
+    "KotlinInternal",
+    "KotlinInternalInJava",
+    "cast"
+})
+public final class DaggerRouteXApp_HiltComponents_SingletonC {
+  private DaggerRouteXApp_HiltComponents_SingletonC() {
+  }
+
+  public static Builder builder() {
+    return new Builder();
+  }
+
+  public static final class Builder {
+    private ApplicationContextModule applicationContextModule;
+
+    private Builder() {
+    }
+
+    public Builder applicationContextModule(ApplicationContextModule applicationContextModule) {
+      this.applicationContextModule = Preconditions.checkNotNull(applicationContextModule);
+      return this;
+    }
+
+    public RouteXApp_HiltComponents.SingletonC build() {
+      Preconditions.checkBuilderRequirement(applicationContextModule, ApplicationContextModule.class);
+      return new SingletonCImpl(applicationContextModule);
+    }
+  }
+
+  private static final class ActivityRetainedCBuilder implements RouteXApp_HiltComponents.ActivityRetainedC.Builder {
+    private final SingletonCImpl singletonCImpl;
+
+    private SavedStateHandleHolder savedStateHandleHolder;
+
+    private ActivityRetainedCBuilder(SingletonCImpl singletonCImpl) {
+      this.singletonCImpl = singletonCImpl;
+    }
+
+    @Override
+    public ActivityRetainedCBuilder savedStateHandleHolder(
+        SavedStateHandleHolder savedStateHandleHolder) {
+      this.savedStateHandleHolder = Preconditions.checkNotNull(savedStateHandleHolder);
+      return this;
+    }
+
+    @Override
+    public RouteXApp_HiltComponents.ActivityRetainedC build() {
+      Preconditions.checkBuilderRequirement(savedStateHandleHolder, SavedStateHandleHolder.class);
+      return new ActivityRetainedCImpl(singletonCImpl, savedStateHandleHolder);
+    }
+  }
+
+  private static final class ActivityCBuilder implements RouteXApp_HiltComponents.ActivityC.Builder {
+    private final SingletonCImpl singletonCImpl;
+
+    private final ActivityRetainedCImpl activityRetainedCImpl;
+
+    private Activity activity;
+
+    private ActivityCBuilder(SingletonCImpl singletonCImpl,
+        ActivityRetainedCImpl activityRetainedCImpl) {
+      this.singletonCImpl = singletonCImpl;
+      this.activityRetainedCImpl = activityRetainedCImpl;
+    }
+
+    @Override
+    public ActivityCBuilder activity(Activity activity) {
+      this.activity = Preconditions.checkNotNull(activity);
+      return this;
+    }
+
+    @Override
+    public RouteXApp_HiltComponents.ActivityC build() {
+      Preconditions.checkBuilderRequirement(activity, Activity.class);
+      return new ActivityCImpl(singletonCImpl, activityRetainedCImpl, activity);
+    }
+  }
+
+  private static final class FragmentCBuilder implements RouteXApp_HiltComponents.FragmentC.Builder {
+    private final SingletonCImpl singletonCImpl;
+
+    private final ActivityRetainedCImpl activityRetainedCImpl;
+
+    private final ActivityCImpl activityCImpl;
+
+    private Fragment fragment;
+
+    private FragmentCBuilder(SingletonCImpl singletonCImpl,
+        ActivityRetainedCImpl activityRetainedCImpl, ActivityCImpl activityCImpl) {
+      this.singletonCImpl = singletonCImpl;
+      this.activityRetainedCImpl = activityRetainedCImpl;
+      this.activityCImpl = activityCImpl;
+    }
+
+    @Override
+    public FragmentCBuilder fragment(Fragment fragment) {
+      this.fragment = Preconditions.checkNotNull(fragment);
+      return this;
+    }
+
+    @Override
+    public RouteXApp_HiltComponents.FragmentC build() {
+      Preconditions.checkBuilderRequirement(fragment, Fragment.class);
+      return new FragmentCImpl(singletonCImpl, activityRetainedCImpl, activityCImpl, fragment);
+    }
+  }
+
+  private static final class ViewWithFragmentCBuilder implements RouteXApp_HiltComponents.ViewWithFragmentC.Builder {
+    private final SingletonCImpl singletonCImpl;
+
+    private final ActivityRetainedCImpl activityRetainedCImpl;
+
+    private final ActivityCImpl activityCImpl;
+
+    private final FragmentCImpl fragmentCImpl;
+
+    private View view;
+
+    private ViewWithFragmentCBuilder(SingletonCImpl singletonCImpl,
+        ActivityRetainedCImpl activityRetainedCImpl, ActivityCImpl activityCImpl,
+        FragmentCImpl fragmentCImpl) {
+      this.singletonCImpl = singletonCImpl;
+      this.activityRetainedCImpl = activityRetainedCImpl;
+      this.activityCImpl = activityCImpl;
+      this.fragmentCImpl = fragmentCImpl;
+    }
+
+    @Override
+    public ViewWithFragmentCBuilder view(View view) {
+      this.view = Preconditions.checkNotNull(view);
+      return this;
+    }
+
+    @Override
+    public RouteXApp_HiltComponents.ViewWithFragmentC build() {
+      Preconditions.checkBuilderRequirement(view, View.class);
+      return new ViewWithFragmentCImpl(singletonCImpl, activityRetainedCImpl, activityCImpl, fragmentCImpl, view);
+    }
+  }
+
+  private static final class ViewCBuilder implements RouteXApp_HiltComponents.ViewC.Builder {
+    private final SingletonCImpl singletonCImpl;
+
+    private final ActivityRetainedCImpl activityRetainedCImpl;
+
+    private final ActivityCImpl activityCImpl;
+
+    private View view;
+
+    private ViewCBuilder(SingletonCImpl singletonCImpl, ActivityRetainedCImpl activityRetainedCImpl,
+        ActivityCImpl activityCImpl) {
+      this.singletonCImpl = singletonCImpl;
+      this.activityRetainedCImpl = activityRetainedCImpl;
+      this.activityCImpl = activityCImpl;
+    }
+
+    @Override
+    public ViewCBuilder view(View view) {
+      this.view = Preconditions.checkNotNull(view);
+      return this;
+    }
+
+    @Override
+    public RouteXApp_HiltComponents.ViewC build() {
+      Preconditions.checkBuilderRequirement(view, View.class);
+      return new ViewCImpl(singletonCImpl, activityRetainedCImpl, activityCImpl, view);
+    }
+  }
+
+  private static final class ViewModelCBuilder implements RouteXApp_HiltComponents.ViewModelC.Builder {
+    private final SingletonCImpl singletonCImpl;
+
+    private final ActivityRetainedCImpl activityRetainedCImpl;
+
+    private SavedStateHandle savedStateHandle;
+
+    private ViewModelLifecycle viewModelLifecycle;
+
+    private ViewModelCBuilder(SingletonCImpl singletonCImpl,
+        ActivityRetainedCImpl activityRetainedCImpl) {
+      this.singletonCImpl = singletonCImpl;
+      this.activityRetainedCImpl = activityRetainedCImpl;
+    }
+
+    @Override
+    public ViewModelCBuilder savedStateHandle(SavedStateHandle handle) {
+      this.savedStateHandle = Preconditions.checkNotNull(handle);
+      return this;
+    }
+
+    @Override
+    public ViewModelCBuilder viewModelLifecycle(ViewModelLifecycle viewModelLifecycle) {
+      this.viewModelLifecycle = Preconditions.checkNotNull(viewModelLifecycle);
+      return this;
+    }
+
+    @Override
+    public RouteXApp_HiltComponents.ViewModelC build() {
+      Preconditions.checkBuilderRequirement(savedStateHandle, SavedStateHandle.class);
+      Preconditions.checkBuilderRequirement(viewModelLifecycle, ViewModelLifecycle.class);
+      return new ViewModelCImpl(singletonCImpl, activityRetainedCImpl, savedStateHandle, viewModelLifecycle);
+    }
+  }
+
+  private static final class ServiceCBuilder implements RouteXApp_HiltComponents.ServiceC.Builder {
+    private final SingletonCImpl singletonCImpl;
+
+    private Service service;
+
+    private ServiceCBuilder(SingletonCImpl singletonCImpl) {
+      this.singletonCImpl = singletonCImpl;
+    }
+
+    @Override
+    public ServiceCBuilder service(Service service) {
+      this.service = Preconditions.checkNotNull(service);
+      return this;
+    }
+
+    @Override
+    public RouteXApp_HiltComponents.ServiceC build() {
+      Preconditions.checkBuilderRequirement(service, Service.class);
+      return new ServiceCImpl(singletonCImpl, service);
+    }
+  }
+
+  private static final class ViewWithFragmentCImpl extends RouteXApp_HiltComponents.ViewWithFragmentC {
+    private final SingletonCImpl singletonCImpl;
+
+    private final ActivityRetainedCImpl activityRetainedCImpl;
+
+    private final ActivityCImpl activityCImpl;
+
+    private final FragmentCImpl fragmentCImpl;
+
+    private final ViewWithFragmentCImpl viewWithFragmentCImpl = this;
+
+    private ViewWithFragmentCImpl(SingletonCImpl singletonCImpl,
+        ActivityRetainedCImpl activityRetainedCImpl, ActivityCImpl activityCImpl,
+        FragmentCImpl fragmentCImpl, View viewParam) {
+      this.singletonCImpl = singletonCImpl;
+      this.activityRetainedCImpl = activityRetainedCImpl;
+      this.activityCImpl = activityCImpl;
+      this.fragmentCImpl = fragmentCImpl;
+
+
+    }
+  }
+
+  private static final class FragmentCImpl extends RouteXApp_HiltComponents.FragmentC {
+    private final SingletonCImpl singletonCImpl;
+
+    private final ActivityRetainedCImpl activityRetainedCImpl;
+
+    private final ActivityCImpl activityCImpl;
+
+    private final FragmentCImpl fragmentCImpl = this;
+
+    private FragmentCImpl(SingletonCImpl singletonCImpl,
+        ActivityRetainedCImpl activityRetainedCImpl, ActivityCImpl activityCImpl,
+        Fragment fragmentParam) {
+      this.singletonCImpl = singletonCImpl;
+      this.activityRetainedCImpl = activityRetainedCImpl;
+      this.activityCImpl = activityCImpl;
+
+
+    }
+
+    @Override
+    public DefaultViewModelFactories.InternalFactoryFactory getHiltInternalFactoryFactory() {
+      return activityCImpl.getHiltInternalFactoryFactory();
+    }
+
+    @Override
+    public ViewWithFragmentComponentBuilder viewWithFragmentComponentBuilder() {
+      return new ViewWithFragmentCBuilder(singletonCImpl, activityRetainedCImpl, activityCImpl, fragmentCImpl);
+    }
+  }
+
+  private static final class ViewCImpl extends RouteXApp_HiltComponents.ViewC {
+    private final SingletonCImpl singletonCImpl;
+
+    private final ActivityRetainedCImpl activityRetainedCImpl;
+
+    private final ActivityCImpl activityCImpl;
+
+    private final ViewCImpl viewCImpl = this;
+
+    private ViewCImpl(SingletonCImpl singletonCImpl, ActivityRetainedCImpl activityRetainedCImpl,
+        ActivityCImpl activityCImpl, View viewParam) {
+      this.singletonCImpl = singletonCImpl;
+      this.activityRetainedCImpl = activityRetainedCImpl;
+      this.activityCImpl = activityCImpl;
+
+
+    }
+  }
+
+  private static final class ActivityCImpl extends RouteXApp_HiltComponents.ActivityC {
+    private final SingletonCImpl singletonCImpl;
+
+    private final ActivityRetainedCImpl activityRetainedCImpl;
+
+    private final ActivityCImpl activityCImpl = this;
+
+    private ActivityCImpl(SingletonCImpl singletonCImpl,
+        ActivityRetainedCImpl activityRetainedCImpl, Activity activityParam) {
+      this.singletonCImpl = singletonCImpl;
+      this.activityRetainedCImpl = activityRetainedCImpl;
+
+
+    }
+
+    @Override
+    public void injectMainActivity(MainActivity arg0) {
+    }
+
+    @Override
+    public DefaultViewModelFactories.InternalFactoryFactory getHiltInternalFactoryFactory() {
+      return DefaultViewModelFactories_InternalFactoryFactory_Factory.newInstance(getViewModelKeys(), new ViewModelCBuilder(singletonCImpl, activityRetainedCImpl));
+    }
+
+    @Override
+    public Map<Class<?>, Boolean> getViewModelKeys() {
+      return LazyClassKeyMap.<Boolean>of(ImmutableMap.<String, Boolean>builderWithExpectedSize(21).put(LazyClassKeyProvider.com_routex_app_admin_presentation_dashboard_AdminDashboardViewModel, AdminDashboardViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_routex_app_admin_presentation_trips_AdminTripsViewModel, AdminTripsViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_routex_app_admin_presentation_analytics_AnalyticsViewModel, AnalyticsViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_routex_app_student_presentation_boarding_AvailableBusesViewModel, AvailableBusesViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_routex_app_student_presentation_boarding_BoardingSelectionViewModel, BoardingSelectionViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_routex_app_admin_presentation_buses_BusManagementViewModel, BusManagementViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_routex_app_driver_presentation_DriverMapViewModel, DriverMapViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_routex_app_driver_presentation_DriverViewModel, DriverViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_routex_app_admin_presentation_emergency_EmergencyViewModel, EmergencyViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_routex_app_eta_presentation_EtaViewModel, EtaViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_routex_app_auth_presentation_login_LoginViewModel, LoginViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_routex_app_admin_presentation_manage_ManageRoutesViewModel, ManageRoutesViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_routex_app_maps_presentation_MapViewModel, MapViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_routex_app_auth_presentation_onboarding_OnboardingViewModel, OnboardingViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_routex_app_auth_presentation_register_RegisterViewModel, RegisterViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_routex_app_admin_presentation_routes_RouteEditorViewModel, RouteEditorViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_routex_app_student_presentation_routes_RoutesViewModel, RoutesViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_routex_app_core_rbac_SessionViewModel, SessionViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_routex_app_auth_presentation_splash_SplashViewModel, SplashViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_routex_app_student_presentation_dashboard_StudentDashboardViewModel, StudentDashboardViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_routex_app_core_ui_ThemeViewModel, ThemeViewModel_HiltModules.KeyModule.provide()).build());
+    }
+
+    @Override
+    public ViewModelComponentBuilder getViewModelComponentBuilder() {
+      return new ViewModelCBuilder(singletonCImpl, activityRetainedCImpl);
+    }
+
+    @Override
+    public FragmentComponentBuilder fragmentComponentBuilder() {
+      return new FragmentCBuilder(singletonCImpl, activityRetainedCImpl, activityCImpl);
+    }
+
+    @Override
+    public ViewComponentBuilder viewComponentBuilder() {
+      return new ViewCBuilder(singletonCImpl, activityRetainedCImpl, activityCImpl);
+    }
+
+    @IdentifierNameString
+    private static final class LazyClassKeyProvider {
+      static String com_routex_app_core_rbac_SessionViewModel = "com.routex.app.core.rbac.SessionViewModel";
+
+      static String com_routex_app_auth_presentation_login_LoginViewModel = "com.routex.app.auth.presentation.login.LoginViewModel";
+
+      static String com_routex_app_student_presentation_boarding_AvailableBusesViewModel = "com.routex.app.student.presentation.boarding.AvailableBusesViewModel";
+
+      static String com_routex_app_student_presentation_boarding_BoardingSelectionViewModel = "com.routex.app.student.presentation.boarding.BoardingSelectionViewModel";
+
+      static String com_routex_app_eta_presentation_EtaViewModel = "com.routex.app.eta.presentation.EtaViewModel";
+
+      static String com_routex_app_auth_presentation_register_RegisterViewModel = "com.routex.app.auth.presentation.register.RegisterViewModel";
+
+      static String com_routex_app_driver_presentation_DriverMapViewModel = "com.routex.app.driver.presentation.DriverMapViewModel";
+
+      static String com_routex_app_admin_presentation_routes_RouteEditorViewModel = "com.routex.app.admin.presentation.routes.RouteEditorViewModel";
+
+      static String com_routex_app_student_presentation_routes_RoutesViewModel = "com.routex.app.student.presentation.routes.RoutesViewModel";
+
+      static String com_routex_app_auth_presentation_splash_SplashViewModel = "com.routex.app.auth.presentation.splash.SplashViewModel";
+
+      static String com_routex_app_student_presentation_dashboard_StudentDashboardViewModel = "com.routex.app.student.presentation.dashboard.StudentDashboardViewModel";
+
+      static String com_routex_app_admin_presentation_analytics_AnalyticsViewModel = "com.routex.app.admin.presentation.analytics.AnalyticsViewModel";
+
+      static String com_routex_app_admin_presentation_dashboard_AdminDashboardViewModel = "com.routex.app.admin.presentation.dashboard.AdminDashboardViewModel";
+
+      static String com_routex_app_driver_presentation_DriverViewModel = "com.routex.app.driver.presentation.DriverViewModel";
+
+      static String com_routex_app_admin_presentation_buses_BusManagementViewModel = "com.routex.app.admin.presentation.buses.BusManagementViewModel";
+
+      static String com_routex_app_admin_presentation_emergency_EmergencyViewModel = "com.routex.app.admin.presentation.emergency.EmergencyViewModel";
+
+      static String com_routex_app_maps_presentation_MapViewModel = "com.routex.app.maps.presentation.MapViewModel";
+
+      static String com_routex_app_auth_presentation_onboarding_OnboardingViewModel = "com.routex.app.auth.presentation.onboarding.OnboardingViewModel";
+
+      static String com_routex_app_admin_presentation_trips_AdminTripsViewModel = "com.routex.app.admin.presentation.trips.AdminTripsViewModel";
+
+      static String com_routex_app_core_ui_ThemeViewModel = "com.routex.app.core.ui.ThemeViewModel";
+
+      static String com_routex_app_admin_presentation_manage_ManageRoutesViewModel = "com.routex.app.admin.presentation.manage.ManageRoutesViewModel";
+
+      @KeepFieldType
+      SessionViewModel com_routex_app_core_rbac_SessionViewModel2;
+
+      @KeepFieldType
+      LoginViewModel com_routex_app_auth_presentation_login_LoginViewModel2;
+
+      @KeepFieldType
+      AvailableBusesViewModel com_routex_app_student_presentation_boarding_AvailableBusesViewModel2;
+
+      @KeepFieldType
+      BoardingSelectionViewModel com_routex_app_student_presentation_boarding_BoardingSelectionViewModel2;
+
+      @KeepFieldType
+      EtaViewModel com_routex_app_eta_presentation_EtaViewModel2;
+
+      @KeepFieldType
+      RegisterViewModel com_routex_app_auth_presentation_register_RegisterViewModel2;
+
+      @KeepFieldType
+      DriverMapViewModel com_routex_app_driver_presentation_DriverMapViewModel2;
+
+      @KeepFieldType
+      RouteEditorViewModel com_routex_app_admin_presentation_routes_RouteEditorViewModel2;
+
+      @KeepFieldType
+      RoutesViewModel com_routex_app_student_presentation_routes_RoutesViewModel2;
+
+      @KeepFieldType
+      SplashViewModel com_routex_app_auth_presentation_splash_SplashViewModel2;
+
+      @KeepFieldType
+      StudentDashboardViewModel com_routex_app_student_presentation_dashboard_StudentDashboardViewModel2;
+
+      @KeepFieldType
+      AnalyticsViewModel com_routex_app_admin_presentation_analytics_AnalyticsViewModel2;
+
+      @KeepFieldType
+      AdminDashboardViewModel com_routex_app_admin_presentation_dashboard_AdminDashboardViewModel2;
+
+      @KeepFieldType
+      DriverViewModel com_routex_app_driver_presentation_DriverViewModel2;
+
+      @KeepFieldType
+      BusManagementViewModel com_routex_app_admin_presentation_buses_BusManagementViewModel2;
+
+      @KeepFieldType
+      EmergencyViewModel com_routex_app_admin_presentation_emergency_EmergencyViewModel2;
+
+      @KeepFieldType
+      MapViewModel com_routex_app_maps_presentation_MapViewModel2;
+
+      @KeepFieldType
+      OnboardingViewModel com_routex_app_auth_presentation_onboarding_OnboardingViewModel2;
+
+      @KeepFieldType
+      AdminTripsViewModel com_routex_app_admin_presentation_trips_AdminTripsViewModel2;
+
+      @KeepFieldType
+      ThemeViewModel com_routex_app_core_ui_ThemeViewModel2;
+
+      @KeepFieldType
+      ManageRoutesViewModel com_routex_app_admin_presentation_manage_ManageRoutesViewModel2;
+    }
+  }
+
+  private static final class ViewModelCImpl extends RouteXApp_HiltComponents.ViewModelC {
+    private final SavedStateHandle savedStateHandle;
+
+    private final SingletonCImpl singletonCImpl;
+
+    private final ActivityRetainedCImpl activityRetainedCImpl;
+
+    private final ViewModelCImpl viewModelCImpl = this;
+
+    private Provider<AdminDashboardViewModel> adminDashboardViewModelProvider;
+
+    private Provider<AdminTripsViewModel> adminTripsViewModelProvider;
+
+    private Provider<AnalyticsViewModel> analyticsViewModelProvider;
+
+    private Provider<AvailableBusesViewModel> availableBusesViewModelProvider;
+
+    private Provider<BoardingSelectionViewModel> boardingSelectionViewModelProvider;
+
+    private Provider<BusManagementViewModel> busManagementViewModelProvider;
+
+    private Provider<DriverMapViewModel> driverMapViewModelProvider;
+
+    private Provider<DriverViewModel> driverViewModelProvider;
+
+    private Provider<EmergencyViewModel> emergencyViewModelProvider;
+
+    private Provider<EtaViewModel> etaViewModelProvider;
+
+    private Provider<LoginViewModel> loginViewModelProvider;
+
+    private Provider<ManageRoutesViewModel> manageRoutesViewModelProvider;
+
+    private Provider<MapViewModel> mapViewModelProvider;
+
+    private Provider<OnboardingViewModel> onboardingViewModelProvider;
+
+    private Provider<RegisterViewModel> registerViewModelProvider;
+
+    private Provider<RouteEditorViewModel> routeEditorViewModelProvider;
+
+    private Provider<RoutesViewModel> routesViewModelProvider;
+
+    private Provider<SessionViewModel> sessionViewModelProvider;
+
+    private Provider<SplashViewModel> splashViewModelProvider;
+
+    private Provider<StudentDashboardViewModel> studentDashboardViewModelProvider;
+
+    private Provider<ThemeViewModel> themeViewModelProvider;
+
+    private ViewModelCImpl(SingletonCImpl singletonCImpl,
+        ActivityRetainedCImpl activityRetainedCImpl, SavedStateHandle savedStateHandleParam,
+        ViewModelLifecycle viewModelLifecycleParam) {
+      this.singletonCImpl = singletonCImpl;
+      this.activityRetainedCImpl = activityRetainedCImpl;
+      this.savedStateHandle = savedStateHandleParam;
+      initialize(savedStateHandleParam, viewModelLifecycleParam);
+
+    }
+
+    private GetAllRoutesUseCase getAllRoutesUseCase() {
+      return new GetAllRoutesUseCase(singletonCImpl.adminRepositoryImplProvider.get());
+    }
+
+    private GetCurrentUserUseCase getCurrentUserUseCase() {
+      return new GetCurrentUserUseCase(singletonCImpl.authRepositoryImplProvider.get());
+    }
+
+    private SignOutUseCase signOutUseCase() {
+      return new SignOutUseCase(singletonCImpl.authRepositoryImplProvider.get());
+    }
+
+    private GetBusLocationUseCase getBusLocationUseCase() {
+      return new GetBusLocationUseCase(singletonCImpl.mapsRepositoryImplProvider.get());
+    }
+
+    private GetAnalyticsUseCase getAnalyticsUseCase() {
+      return new GetAnalyticsUseCase(singletonCImpl.adminRepositoryImplProvider.get());
+    }
+
+    private GetRouteByIdUseCase getRouteByIdUseCase() {
+      return new GetRouteByIdUseCase(singletonCImpl.studentRepositoryImplProvider.get());
+    }
+
+    private GetAllBusesUseCase getAllBusesUseCase() {
+      return new GetAllBusesUseCase(singletonCImpl.adminRepositoryImplProvider.get());
+    }
+
+    private AddBusUseCase addBusUseCase() {
+      return new AddBusUseCase(singletonCImpl.adminRepositoryImplProvider.get());
+    }
+
+    private UpdateBusUseCase updateBusUseCase() {
+      return new UpdateBusUseCase(singletonCImpl.adminRepositoryImplProvider.get());
+    }
+
+    private DeleteBusUseCase deleteBusUseCase() {
+      return new DeleteBusUseCase(singletonCImpl.adminRepositoryImplProvider.get());
+    }
+
+    private AssignBusUseCase assignBusUseCase() {
+      return new AssignBusUseCase(singletonCImpl.adminRepositoryImplProvider.get());
+    }
+
+    private AddDriverUseCase addDriverUseCase() {
+      return new AddDriverUseCase(singletonCImpl.adminRepositoryImplProvider.get());
+    }
+
+    private GetAllDriversUseCase getAllDriversUseCase() {
+      return new GetAllDriversUseCase(singletonCImpl.adminRepositoryImplProvider.get());
+    }
+
+    private AssignDriverUseCase assignDriverUseCase() {
+      return new AssignDriverUseCase(singletonCImpl.adminRepositoryImplProvider.get());
+    }
+
+    private SeedDriversUseCase seedDriversUseCase() {
+      return new SeedDriversUseCase(singletonCImpl.adminRepositoryImplProvider.get());
+    }
+
+    private SeedBusesUseCase seedBusesUseCase() {
+      return new SeedBusesUseCase(singletonCImpl.adminRepositoryImplProvider.get());
+    }
+
+    private SeedRoutesUseCase seedRoutesUseCase() {
+      return new SeedRoutesUseCase(singletonCImpl.adminRepositoryImplProvider.get());
+    }
+
+    private GetRoutesUseCase getRoutesUseCase() {
+      return new GetRoutesUseCase(singletonCImpl.studentRepositoryImplProvider.get());
+    }
+
+    private GetDriverByAuthUidUseCase getDriverByAuthUidUseCase() {
+      return new GetDriverByAuthUidUseCase(singletonCImpl.adminRepositoryImplProvider.get());
+    }
+
+    private GetBusByIdUseCase getBusByIdUseCase() {
+      return new GetBusByIdUseCase(singletonCImpl.adminRepositoryImplProvider.get());
+    }
+
+    private SendEmergencyAlertUseCase sendEmergencyAlertUseCase() {
+      return new SendEmergencyAlertUseCase(singletonCImpl.adminRepositoryImplProvider.get());
+    }
+
+    private ObserveActiveAlertsUseCase observeActiveAlertsUseCase() {
+      return new ObserveActiveAlertsUseCase(singletonCImpl.adminRepositoryImplProvider.get());
+    }
+
+    private ResolveAlertUseCase resolveAlertUseCase() {
+      return new ResolveAlertUseCase(singletonCImpl.adminRepositoryImplProvider.get());
+    }
+
+    private ObserveEtaUseCase observeEtaUseCase() {
+      return new ObserveEtaUseCase(getBusLocationUseCase(), new CalculateEtaUseCase());
+    }
+
+    private SignInWithEmailUseCase signInWithEmailUseCase() {
+      return new SignInWithEmailUseCase(singletonCImpl.authRepositoryImplProvider.get());
+    }
+
+    private SignInWithGoogleUseCase signInWithGoogleUseCase() {
+      return new SignInWithGoogleUseCase(singletonCImpl.authRepositoryImplProvider.get());
+    }
+
+    private AddRouteUseCase addRouteUseCase() {
+      return new AddRouteUseCase(singletonCImpl.adminRepositoryImplProvider.get());
+    }
+
+    private DeleteRouteUseCase deleteRouteUseCase() {
+      return new DeleteRouteUseCase(singletonCImpl.adminRepositoryImplProvider.get());
+    }
+
+    private SignUpWithEmailUseCase signUpWithEmailUseCase() {
+      return new SignUpWithEmailUseCase(singletonCImpl.authRepositoryImplProvider.get());
+    }
+
+    private SignUpDriverUseCase signUpDriverUseCase() {
+      return new SignUpDriverUseCase(singletonCImpl.authRepositoryImplProvider.get());
+    }
+
+    private UpdateRouteUseCase updateRouteUseCase() {
+      return new UpdateRouteUseCase(singletonCImpl.adminRepositoryImplProvider.get());
+    }
+
+    @SuppressWarnings("unchecked")
+    private void initialize(final SavedStateHandle savedStateHandleParam,
+        final ViewModelLifecycle viewModelLifecycleParam) {
+      this.adminDashboardViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 0);
+      this.adminTripsViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 1);
+      this.analyticsViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 2);
+      this.availableBusesViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 3);
+      this.boardingSelectionViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 4);
+      this.busManagementViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 5);
+      this.driverMapViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 6);
+      this.driverViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 7);
+      this.emergencyViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 8);
+      this.etaViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 9);
+      this.loginViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 10);
+      this.manageRoutesViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 11);
+      this.mapViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 12);
+      this.onboardingViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 13);
+      this.registerViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 14);
+      this.routeEditorViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 15);
+      this.routesViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 16);
+      this.sessionViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 17);
+      this.splashViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 18);
+      this.studentDashboardViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 19);
+      this.themeViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 20);
+    }
+
+    @Override
+    public Map<Class<?>, javax.inject.Provider<ViewModel>> getHiltViewModelMap() {
+      return LazyClassKeyMap.<javax.inject.Provider<ViewModel>>of(ImmutableMap.<String, javax.inject.Provider<ViewModel>>builderWithExpectedSize(21).put(LazyClassKeyProvider.com_routex_app_admin_presentation_dashboard_AdminDashboardViewModel, ((Provider) adminDashboardViewModelProvider)).put(LazyClassKeyProvider.com_routex_app_admin_presentation_trips_AdminTripsViewModel, ((Provider) adminTripsViewModelProvider)).put(LazyClassKeyProvider.com_routex_app_admin_presentation_analytics_AnalyticsViewModel, ((Provider) analyticsViewModelProvider)).put(LazyClassKeyProvider.com_routex_app_student_presentation_boarding_AvailableBusesViewModel, ((Provider) availableBusesViewModelProvider)).put(LazyClassKeyProvider.com_routex_app_student_presentation_boarding_BoardingSelectionViewModel, ((Provider) boardingSelectionViewModelProvider)).put(LazyClassKeyProvider.com_routex_app_admin_presentation_buses_BusManagementViewModel, ((Provider) busManagementViewModelProvider)).put(LazyClassKeyProvider.com_routex_app_driver_presentation_DriverMapViewModel, ((Provider) driverMapViewModelProvider)).put(LazyClassKeyProvider.com_routex_app_driver_presentation_DriverViewModel, ((Provider) driverViewModelProvider)).put(LazyClassKeyProvider.com_routex_app_admin_presentation_emergency_EmergencyViewModel, ((Provider) emergencyViewModelProvider)).put(LazyClassKeyProvider.com_routex_app_eta_presentation_EtaViewModel, ((Provider) etaViewModelProvider)).put(LazyClassKeyProvider.com_routex_app_auth_presentation_login_LoginViewModel, ((Provider) loginViewModelProvider)).put(LazyClassKeyProvider.com_routex_app_admin_presentation_manage_ManageRoutesViewModel, ((Provider) manageRoutesViewModelProvider)).put(LazyClassKeyProvider.com_routex_app_maps_presentation_MapViewModel, ((Provider) mapViewModelProvider)).put(LazyClassKeyProvider.com_routex_app_auth_presentation_onboarding_OnboardingViewModel, ((Provider) onboardingViewModelProvider)).put(LazyClassKeyProvider.com_routex_app_auth_presentation_register_RegisterViewModel, ((Provider) registerViewModelProvider)).put(LazyClassKeyProvider.com_routex_app_admin_presentation_routes_RouteEditorViewModel, ((Provider) routeEditorViewModelProvider)).put(LazyClassKeyProvider.com_routex_app_student_presentation_routes_RoutesViewModel, ((Provider) routesViewModelProvider)).put(LazyClassKeyProvider.com_routex_app_core_rbac_SessionViewModel, ((Provider) sessionViewModelProvider)).put(LazyClassKeyProvider.com_routex_app_auth_presentation_splash_SplashViewModel, ((Provider) splashViewModelProvider)).put(LazyClassKeyProvider.com_routex_app_student_presentation_dashboard_StudentDashboardViewModel, ((Provider) studentDashboardViewModelProvider)).put(LazyClassKeyProvider.com_routex_app_core_ui_ThemeViewModel, ((Provider) themeViewModelProvider)).build());
+    }
+
+    @Override
+    public Map<Class<?>, Object> getHiltViewModelAssistedMap() {
+      return ImmutableMap.<Class<?>, Object>of();
+    }
+
+    @IdentifierNameString
+    private static final class LazyClassKeyProvider {
+      static String com_routex_app_admin_presentation_manage_ManageRoutesViewModel = "com.routex.app.admin.presentation.manage.ManageRoutesViewModel";
+
+      static String com_routex_app_core_ui_ThemeViewModel = "com.routex.app.core.ui.ThemeViewModel";
+
+      static String com_routex_app_admin_presentation_routes_RouteEditorViewModel = "com.routex.app.admin.presentation.routes.RouteEditorViewModel";
+
+      static String com_routex_app_core_rbac_SessionViewModel = "com.routex.app.core.rbac.SessionViewModel";
+
+      static String com_routex_app_admin_presentation_emergency_EmergencyViewModel = "com.routex.app.admin.presentation.emergency.EmergencyViewModel";
+
+      static String com_routex_app_auth_presentation_login_LoginViewModel = "com.routex.app.auth.presentation.login.LoginViewModel";
+
+      static String com_routex_app_maps_presentation_MapViewModel = "com.routex.app.maps.presentation.MapViewModel";
+
+      static String com_routex_app_student_presentation_routes_RoutesViewModel = "com.routex.app.student.presentation.routes.RoutesViewModel";
+
+      static String com_routex_app_driver_presentation_DriverViewModel = "com.routex.app.driver.presentation.DriverViewModel";
+
+      static String com_routex_app_student_presentation_boarding_BoardingSelectionViewModel = "com.routex.app.student.presentation.boarding.BoardingSelectionViewModel";
+
+      static String com_routex_app_admin_presentation_buses_BusManagementViewModel = "com.routex.app.admin.presentation.buses.BusManagementViewModel";
+
+      static String com_routex_app_student_presentation_dashboard_StudentDashboardViewModel = "com.routex.app.student.presentation.dashboard.StudentDashboardViewModel";
+
+      static String com_routex_app_admin_presentation_analytics_AnalyticsViewModel = "com.routex.app.admin.presentation.analytics.AnalyticsViewModel";
+
+      static String com_routex_app_auth_presentation_onboarding_OnboardingViewModel = "com.routex.app.auth.presentation.onboarding.OnboardingViewModel";
+
+      static String com_routex_app_student_presentation_boarding_AvailableBusesViewModel = "com.routex.app.student.presentation.boarding.AvailableBusesViewModel";
+
+      static String com_routex_app_admin_presentation_dashboard_AdminDashboardViewModel = "com.routex.app.admin.presentation.dashboard.AdminDashboardViewModel";
+
+      static String com_routex_app_driver_presentation_DriverMapViewModel = "com.routex.app.driver.presentation.DriverMapViewModel";
+
+      static String com_routex_app_eta_presentation_EtaViewModel = "com.routex.app.eta.presentation.EtaViewModel";
+
+      static String com_routex_app_admin_presentation_trips_AdminTripsViewModel = "com.routex.app.admin.presentation.trips.AdminTripsViewModel";
+
+      static String com_routex_app_auth_presentation_register_RegisterViewModel = "com.routex.app.auth.presentation.register.RegisterViewModel";
+
+      static String com_routex_app_auth_presentation_splash_SplashViewModel = "com.routex.app.auth.presentation.splash.SplashViewModel";
+
+      @KeepFieldType
+      ManageRoutesViewModel com_routex_app_admin_presentation_manage_ManageRoutesViewModel2;
+
+      @KeepFieldType
+      ThemeViewModel com_routex_app_core_ui_ThemeViewModel2;
+
+      @KeepFieldType
+      RouteEditorViewModel com_routex_app_admin_presentation_routes_RouteEditorViewModel2;
+
+      @KeepFieldType
+      SessionViewModel com_routex_app_core_rbac_SessionViewModel2;
+
+      @KeepFieldType
+      EmergencyViewModel com_routex_app_admin_presentation_emergency_EmergencyViewModel2;
+
+      @KeepFieldType
+      LoginViewModel com_routex_app_auth_presentation_login_LoginViewModel2;
+
+      @KeepFieldType
+      MapViewModel com_routex_app_maps_presentation_MapViewModel2;
+
+      @KeepFieldType
+      RoutesViewModel com_routex_app_student_presentation_routes_RoutesViewModel2;
+
+      @KeepFieldType
+      DriverViewModel com_routex_app_driver_presentation_DriverViewModel2;
+
+      @KeepFieldType
+      BoardingSelectionViewModel com_routex_app_student_presentation_boarding_BoardingSelectionViewModel2;
+
+      @KeepFieldType
+      BusManagementViewModel com_routex_app_admin_presentation_buses_BusManagementViewModel2;
+
+      @KeepFieldType
+      StudentDashboardViewModel com_routex_app_student_presentation_dashboard_StudentDashboardViewModel2;
+
+      @KeepFieldType
+      AnalyticsViewModel com_routex_app_admin_presentation_analytics_AnalyticsViewModel2;
+
+      @KeepFieldType
+      OnboardingViewModel com_routex_app_auth_presentation_onboarding_OnboardingViewModel2;
+
+      @KeepFieldType
+      AvailableBusesViewModel com_routex_app_student_presentation_boarding_AvailableBusesViewModel2;
+
+      @KeepFieldType
+      AdminDashboardViewModel com_routex_app_admin_presentation_dashboard_AdminDashboardViewModel2;
+
+      @KeepFieldType
+      DriverMapViewModel com_routex_app_driver_presentation_DriverMapViewModel2;
+
+      @KeepFieldType
+      EtaViewModel com_routex_app_eta_presentation_EtaViewModel2;
+
+      @KeepFieldType
+      AdminTripsViewModel com_routex_app_admin_presentation_trips_AdminTripsViewModel2;
+
+      @KeepFieldType
+      RegisterViewModel com_routex_app_auth_presentation_register_RegisterViewModel2;
+
+      @KeepFieldType
+      SplashViewModel com_routex_app_auth_presentation_splash_SplashViewModel2;
+    }
+
+    private static final class SwitchingProvider<T> implements Provider<T> {
+      private final SingletonCImpl singletonCImpl;
+
+      private final ActivityRetainedCImpl activityRetainedCImpl;
+
+      private final ViewModelCImpl viewModelCImpl;
+
+      private final int id;
+
+      SwitchingProvider(SingletonCImpl singletonCImpl, ActivityRetainedCImpl activityRetainedCImpl,
+          ViewModelCImpl viewModelCImpl, int id) {
+        this.singletonCImpl = singletonCImpl;
+        this.activityRetainedCImpl = activityRetainedCImpl;
+        this.viewModelCImpl = viewModelCImpl;
+        this.id = id;
+      }
+
+      @SuppressWarnings("unchecked")
+      @Override
+      public T get() {
+        switch (id) {
+          case 0: // com.routex.app.admin.presentation.dashboard.AdminDashboardViewModel 
+          return (T) new AdminDashboardViewModel(viewModelCImpl.getAllRoutesUseCase(), singletonCImpl.adminRepositoryImplProvider.get(), viewModelCImpl.getCurrentUserUseCase(), viewModelCImpl.signOutUseCase(), singletonCImpl.firebaseInitializerProvider.get(), viewModelCImpl.getBusLocationUseCase());
+
+          case 1: // com.routex.app.admin.presentation.trips.AdminTripsViewModel 
+          return (T) new AdminTripsViewModel(singletonCImpl.observeAllTripsUseCaseProvider.get(), singletonCImpl.tripRepositoryImplProvider.get());
+
+          case 2: // com.routex.app.admin.presentation.analytics.AnalyticsViewModel 
+          return (T) new AnalyticsViewModel(viewModelCImpl.getAnalyticsUseCase());
+
+          case 3: // com.routex.app.student.presentation.boarding.AvailableBusesViewModel 
+          return (T) new AvailableBusesViewModel(viewModelCImpl.savedStateHandle, viewModelCImpl.getRouteByIdUseCase());
+
+          case 4: // com.routex.app.student.presentation.boarding.BoardingSelectionViewModel 
+          return (T) new BoardingSelectionViewModel(viewModelCImpl.savedStateHandle, viewModelCImpl.getRouteByIdUseCase(), singletonCImpl.locationProvider.get());
+
+          case 5: // com.routex.app.admin.presentation.buses.BusManagementViewModel 
+          return (T) new BusManagementViewModel(viewModelCImpl.getAllBusesUseCase(), viewModelCImpl.getAllRoutesUseCase(), viewModelCImpl.addBusUseCase(), viewModelCImpl.updateBusUseCase(), viewModelCImpl.deleteBusUseCase(), viewModelCImpl.assignBusUseCase(), viewModelCImpl.addDriverUseCase(), viewModelCImpl.getAllDriversUseCase(), viewModelCImpl.assignDriverUseCase(), viewModelCImpl.seedDriversUseCase(), viewModelCImpl.seedBusesUseCase(), viewModelCImpl.seedRoutesUseCase());
+
+          case 6: // com.routex.app.driver.presentation.DriverMapViewModel 
+          return (T) new DriverMapViewModel(viewModelCImpl.savedStateHandle, viewModelCImpl.getRouteByIdUseCase(), singletonCImpl.locationProvider.get(), singletonCImpl.observeActiveTripForRouteUseCaseProvider.get());
+
+          case 7: // com.routex.app.driver.presentation.DriverViewModel 
+          return (T) new DriverViewModel(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule), viewModelCImpl.getCurrentUserUseCase(), viewModelCImpl.getRoutesUseCase(), viewModelCImpl.signOutUseCase(), singletonCImpl.startTripUseCaseProvider.get(), singletonCImpl.endTripUseCaseProvider.get(), singletonCImpl.observeTripUseCaseProvider.get(), viewModelCImpl.getDriverByAuthUidUseCase(), viewModelCImpl.getBusByIdUseCase(), singletonCImpl.driverRepositoryImplProvider.get(), singletonCImpl.networkMonitorProvider.get());
+
+          case 8: // com.routex.app.admin.presentation.emergency.EmergencyViewModel 
+          return (T) new EmergencyViewModel(viewModelCImpl.sendEmergencyAlertUseCase(), viewModelCImpl.observeActiveAlertsUseCase(), viewModelCImpl.resolveAlertUseCase(), viewModelCImpl.getAllRoutesUseCase());
+
+          case 9: // com.routex.app.eta.presentation.EtaViewModel 
+          return (T) new EtaViewModel(viewModelCImpl.savedStateHandle, viewModelCImpl.getRouteByIdUseCase(), viewModelCImpl.getRoutesUseCase(), viewModelCImpl.observeEtaUseCase(), singletonCImpl.userPreferencesRepositoryProvider.get(), singletonCImpl.notificationHelperProvider.get(), singletonCImpl.fcmTokenRepositoryProvider.get(), new MissedBusPredictionUseCase());
+
+          case 10: // com.routex.app.auth.presentation.login.LoginViewModel 
+          return (T) new LoginViewModel(viewModelCImpl.signInWithEmailUseCase(), viewModelCImpl.signInWithGoogleUseCase());
+
+          case 11: // com.routex.app.admin.presentation.manage.ManageRoutesViewModel 
+          return (T) new ManageRoutesViewModel(viewModelCImpl.getAllRoutesUseCase(), viewModelCImpl.addRouteUseCase(), viewModelCImpl.deleteRouteUseCase());
+
+          case 12: // com.routex.app.maps.presentation.MapViewModel 
+          return (T) new MapViewModel(viewModelCImpl.savedStateHandle, viewModelCImpl.getBusLocationUseCase(), viewModelCImpl.getRouteByIdUseCase(), singletonCImpl.locationProvider.get(), singletonCImpl.geofenceManagerProvider.get());
+
+          case 13: // com.routex.app.auth.presentation.onboarding.OnboardingViewModel 
+          return (T) new OnboardingViewModel(singletonCImpl.userPreferencesRepositoryProvider.get());
+
+          case 14: // com.routex.app.auth.presentation.register.RegisterViewModel 
+          return (T) new RegisterViewModel(viewModelCImpl.signUpWithEmailUseCase(), viewModelCImpl.signUpDriverUseCase());
+
+          case 15: // com.routex.app.admin.presentation.routes.RouteEditorViewModel 
+          return (T) new RouteEditorViewModel(viewModelCImpl.savedStateHandle, viewModelCImpl.addRouteUseCase(), viewModelCImpl.updateRouteUseCase(), viewModelCImpl.getAllRoutesUseCase());
+
+          case 16: // com.routex.app.student.presentation.routes.RoutesViewModel 
+          return (T) new RoutesViewModel(viewModelCImpl.getRoutesUseCase());
+
+          case 17: // com.routex.app.core.rbac.SessionViewModel 
+          return (T) new SessionViewModel(singletonCImpl.authRepositoryImplProvider.get());
+
+          case 18: // com.routex.app.auth.presentation.splash.SplashViewModel 
+          return (T) new SplashViewModel(viewModelCImpl.getCurrentUserUseCase(), singletonCImpl.userPreferencesRepositoryProvider.get());
+
+          case 19: // com.routex.app.student.presentation.dashboard.StudentDashboardViewModel 
+          return (T) new StudentDashboardViewModel(viewModelCImpl.getRoutesUseCase(), viewModelCImpl.getCurrentUserUseCase(), viewModelCImpl.signOutUseCase(), singletonCImpl.observeAllTripsUseCaseProvider.get(), singletonCImpl.networkMonitorProvider.get());
+
+          case 20: // com.routex.app.core.ui.ThemeViewModel 
+          return (T) new ThemeViewModel(singletonCImpl.userPreferencesRepositoryProvider.get());
+
+          default: throw new AssertionError(id);
+        }
+      }
+    }
+  }
+
+  private static final class ActivityRetainedCImpl extends RouteXApp_HiltComponents.ActivityRetainedC {
+    private final SingletonCImpl singletonCImpl;
+
+    private final ActivityRetainedCImpl activityRetainedCImpl = this;
+
+    private Provider<ActivityRetainedLifecycle> provideActivityRetainedLifecycleProvider;
+
+    private ActivityRetainedCImpl(SingletonCImpl singletonCImpl,
+        SavedStateHandleHolder savedStateHandleHolderParam) {
+      this.singletonCImpl = singletonCImpl;
+
+      initialize(savedStateHandleHolderParam);
+
+    }
+
+    @SuppressWarnings("unchecked")
+    private void initialize(final SavedStateHandleHolder savedStateHandleHolderParam) {
+      this.provideActivityRetainedLifecycleProvider = DoubleCheck.provider(new SwitchingProvider<ActivityRetainedLifecycle>(singletonCImpl, activityRetainedCImpl, 0));
+    }
+
+    @Override
+    public ActivityComponentBuilder activityComponentBuilder() {
+      return new ActivityCBuilder(singletonCImpl, activityRetainedCImpl);
+    }
+
+    @Override
+    public ActivityRetainedLifecycle getActivityRetainedLifecycle() {
+      return provideActivityRetainedLifecycleProvider.get();
+    }
+
+    private static final class SwitchingProvider<T> implements Provider<T> {
+      private final SingletonCImpl singletonCImpl;
+
+      private final ActivityRetainedCImpl activityRetainedCImpl;
+
+      private final int id;
+
+      SwitchingProvider(SingletonCImpl singletonCImpl, ActivityRetainedCImpl activityRetainedCImpl,
+          int id) {
+        this.singletonCImpl = singletonCImpl;
+        this.activityRetainedCImpl = activityRetainedCImpl;
+        this.id = id;
+      }
+
+      @SuppressWarnings("unchecked")
+      @Override
+      public T get() {
+        switch (id) {
+          case 0: // dagger.hilt.android.ActivityRetainedLifecycle 
+          return (T) ActivityRetainedComponentManager_LifecycleModule_ProvideActivityRetainedLifecycleFactory.provideActivityRetainedLifecycle();
+
+          default: throw new AssertionError(id);
+        }
+      }
+    }
+  }
+
+  private static final class ServiceCImpl extends RouteXApp_HiltComponents.ServiceC {
+    private final SingletonCImpl singletonCImpl;
+
+    private final ServiceCImpl serviceCImpl = this;
+
+    private ServiceCImpl(SingletonCImpl singletonCImpl, Service serviceParam) {
+      this.singletonCImpl = singletonCImpl;
+
+
+    }
+
+    @Override
+    public void injectRouteXFcmService(RouteXFcmService arg0) {
+      injectRouteXFcmService2(arg0);
+    }
+
+    @Override
+    public void injectLocationTrackingService(LocationTrackingService arg0) {
+      injectLocationTrackingService2(arg0);
+    }
+
+    @CanIgnoreReturnValue
+    private RouteXFcmService injectRouteXFcmService2(RouteXFcmService instance) {
+      RouteXFcmService_MembersInjector.injectTokenRepository(instance, singletonCImpl.fcmTokenRepositoryProvider.get());
+      RouteXFcmService_MembersInjector.injectNotificationHelper(instance, singletonCImpl.notificationHelperProvider.get());
+      return instance;
+    }
+
+    @CanIgnoreReturnValue
+    private LocationTrackingService injectLocationTrackingService2(
+        LocationTrackingService instance) {
+      LocationTrackingService_MembersInjector.injectLocationProvider(instance, singletonCImpl.locationProvider.get());
+      LocationTrackingService_MembersInjector.injectDriverRepository(instance, singletonCImpl.driverRepositoryImplProvider.get());
+      LocationTrackingService_MembersInjector.injectTripRepository(instance, singletonCImpl.tripRepositoryImplProvider.get());
+      return instance;
+    }
+  }
+
+  private static final class SingletonCImpl extends RouteXApp_HiltComponents.SingletonC {
+    private final ApplicationContextModule applicationContextModule;
+
+    private final SingletonCImpl singletonCImpl = this;
+
+    private Provider<FirebaseFirestore> provideFirebaseFirestoreProvider;
+
+    private Provider<RouteAdminDataSource> routeAdminDataSourceProvider;
+
+    private Provider<BusDataSource> busDataSourceProvider;
+
+    private Provider<DriverDataSource> driverDataSourceProvider;
+
+    private Provider<NotificationHelper> notificationHelperProvider;
+
+    private Provider<AlertDataSource> alertDataSourceProvider;
+
+    private Provider<AdminRepositoryImpl> adminRepositoryImplProvider;
+
+    private Provider<FirebaseAuth> provideFirebaseAuthProvider;
+
+    private Provider<FirebaseDatabase> provideFirebaseDatabaseProvider;
+
+    private Provider<AuthRepositoryImpl> authRepositoryImplProvider;
+
+    private Provider<FirebaseInitializer> firebaseInitializerProvider;
+
+    private Provider<MapsRepositoryImpl> mapsRepositoryImplProvider;
+
+    private Provider<TripRepositoryImpl> tripRepositoryImplProvider;
+
+    private Provider<ObserveAllTripsUseCase> observeAllTripsUseCaseProvider;
+
+    private Provider<StudentRepositoryImpl> studentRepositoryImplProvider;
+
+    private Provider<LocationProvider> locationProvider;
+
+    private Provider<ObserveActiveTripForRouteUseCase> observeActiveTripForRouteUseCaseProvider;
+
+    private Provider<StartTripUseCase> startTripUseCaseProvider;
+
+    private Provider<EndTripUseCase> endTripUseCaseProvider;
+
+    private Provider<ObserveTripUseCase> observeTripUseCaseProvider;
+
+    private Provider<DriverRepositoryImpl> driverRepositoryImplProvider;
+
+    private Provider<NetworkMonitor> networkMonitorProvider;
+
+    private Provider<DataStore<Preferences>> provideDataStoreProvider;
+
+    private Provider<UserPreferencesRepository> userPreferencesRepositoryProvider;
+
+    private Provider<FcmTokenRepository> fcmTokenRepositoryProvider;
+
+    private Provider<GeofenceManager> geofenceManagerProvider;
+
+    private SingletonCImpl(ApplicationContextModule applicationContextModuleParam) {
+      this.applicationContextModule = applicationContextModuleParam;
+      initialize(applicationContextModuleParam);
+
+    }
+
+    @SuppressWarnings("unchecked")
+    private void initialize(final ApplicationContextModule applicationContextModuleParam) {
+      this.provideFirebaseFirestoreProvider = DoubleCheck.provider(new SwitchingProvider<FirebaseFirestore>(singletonCImpl, 2));
+      this.routeAdminDataSourceProvider = DoubleCheck.provider(new SwitchingProvider<RouteAdminDataSource>(singletonCImpl, 1));
+      this.busDataSourceProvider = DoubleCheck.provider(new SwitchingProvider<BusDataSource>(singletonCImpl, 3));
+      this.driverDataSourceProvider = DoubleCheck.provider(new SwitchingProvider<DriverDataSource>(singletonCImpl, 4));
+      this.notificationHelperProvider = DoubleCheck.provider(new SwitchingProvider<NotificationHelper>(singletonCImpl, 6));
+      this.alertDataSourceProvider = DoubleCheck.provider(new SwitchingProvider<AlertDataSource>(singletonCImpl, 5));
+      this.adminRepositoryImplProvider = DoubleCheck.provider(new SwitchingProvider<AdminRepositoryImpl>(singletonCImpl, 0));
+      this.provideFirebaseAuthProvider = DoubleCheck.provider(new SwitchingProvider<FirebaseAuth>(singletonCImpl, 8));
+      this.provideFirebaseDatabaseProvider = DoubleCheck.provider(new SwitchingProvider<FirebaseDatabase>(singletonCImpl, 9));
+      this.authRepositoryImplProvider = DoubleCheck.provider(new SwitchingProvider<AuthRepositoryImpl>(singletonCImpl, 7));
+      this.firebaseInitializerProvider = DoubleCheck.provider(new SwitchingProvider<FirebaseInitializer>(singletonCImpl, 10));
+      this.mapsRepositoryImplProvider = DoubleCheck.provider(new SwitchingProvider<MapsRepositoryImpl>(singletonCImpl, 11));
+      this.tripRepositoryImplProvider = DoubleCheck.provider(new SwitchingProvider<TripRepositoryImpl>(singletonCImpl, 13));
+      this.observeAllTripsUseCaseProvider = DoubleCheck.provider(new SwitchingProvider<ObserveAllTripsUseCase>(singletonCImpl, 12));
+      this.studentRepositoryImplProvider = DoubleCheck.provider(new SwitchingProvider<StudentRepositoryImpl>(singletonCImpl, 14));
+      this.locationProvider = DoubleCheck.provider(new SwitchingProvider<LocationProvider>(singletonCImpl, 15));
+      this.observeActiveTripForRouteUseCaseProvider = DoubleCheck.provider(new SwitchingProvider<ObserveActiveTripForRouteUseCase>(singletonCImpl, 16));
+      this.startTripUseCaseProvider = DoubleCheck.provider(new SwitchingProvider<StartTripUseCase>(singletonCImpl, 17));
+      this.endTripUseCaseProvider = DoubleCheck.provider(new SwitchingProvider<EndTripUseCase>(singletonCImpl, 18));
+      this.observeTripUseCaseProvider = DoubleCheck.provider(new SwitchingProvider<ObserveTripUseCase>(singletonCImpl, 19));
+      this.driverRepositoryImplProvider = DoubleCheck.provider(new SwitchingProvider<DriverRepositoryImpl>(singletonCImpl, 20));
+      this.networkMonitorProvider = DoubleCheck.provider(new SwitchingProvider<NetworkMonitor>(singletonCImpl, 21));
+      this.provideDataStoreProvider = DoubleCheck.provider(new SwitchingProvider<DataStore<Preferences>>(singletonCImpl, 23));
+      this.userPreferencesRepositoryProvider = DoubleCheck.provider(new SwitchingProvider<UserPreferencesRepository>(singletonCImpl, 22));
+      this.fcmTokenRepositoryProvider = DoubleCheck.provider(new SwitchingProvider<FcmTokenRepository>(singletonCImpl, 24));
+      this.geofenceManagerProvider = DoubleCheck.provider(new SwitchingProvider<GeofenceManager>(singletonCImpl, 25));
+    }
+
+    @Override
+    public void injectRouteXApp(RouteXApp routeXApp) {
+    }
+
+    @Override
+    public Set<Boolean> getDisableFragmentGetContextFix() {
+      return ImmutableSet.<Boolean>of();
+    }
+
+    @Override
+    public ActivityRetainedComponentBuilder retainedComponentBuilder() {
+      return new ActivityRetainedCBuilder(singletonCImpl);
+    }
+
+    @Override
+    public ServiceComponentBuilder serviceComponentBuilder() {
+      return new ServiceCBuilder(singletonCImpl);
+    }
+
+    private static final class SwitchingProvider<T> implements Provider<T> {
+      private final SingletonCImpl singletonCImpl;
+
+      private final int id;
+
+      SwitchingProvider(SingletonCImpl singletonCImpl, int id) {
+        this.singletonCImpl = singletonCImpl;
+        this.id = id;
+      }
+
+      @SuppressWarnings("unchecked")
+      @Override
+      public T get() {
+        switch (id) {
+          case 0: // com.routex.app.admin.data.repository.AdminRepositoryImpl 
+          return (T) new AdminRepositoryImpl(singletonCImpl.routeAdminDataSourceProvider.get(), singletonCImpl.busDataSourceProvider.get(), singletonCImpl.driverDataSourceProvider.get(), singletonCImpl.alertDataSourceProvider.get(), singletonCImpl.provideFirebaseFirestoreProvider.get());
+
+          case 1: // com.routex.app.admin.data.source.RouteAdminDataSource 
+          return (T) new RouteAdminDataSource(singletonCImpl.provideFirebaseFirestoreProvider.get());
+
+          case 2: // com.google.firebase.firestore.FirebaseFirestore 
+          return (T) AppModule_ProvideFirebaseFirestoreFactory.provideFirebaseFirestore();
+
+          case 3: // com.routex.app.admin.data.source.BusDataSource 
+          return (T) new BusDataSource(singletonCImpl.provideFirebaseFirestoreProvider.get());
+
+          case 4: // com.routex.app.admin.data.source.DriverDataSource 
+          return (T) new DriverDataSource(singletonCImpl.provideFirebaseFirestoreProvider.get());
+
+          case 5: // com.routex.app.admin.data.source.AlertDataSource 
+          return (T) new AlertDataSource(singletonCImpl.provideFirebaseFirestoreProvider.get(), singletonCImpl.notificationHelperProvider.get());
+
+          case 6: // com.routex.app.core.notification.NotificationHelper 
+          return (T) new NotificationHelper(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
+
+          case 7: // com.routex.app.auth.data.repository.AuthRepositoryImpl 
+          return (T) new AuthRepositoryImpl(singletonCImpl.provideFirebaseAuthProvider.get(), singletonCImpl.provideFirebaseFirestoreProvider.get(), singletonCImpl.provideFirebaseDatabaseProvider.get());
+
+          case 8: // com.google.firebase.auth.FirebaseAuth 
+          return (T) AppModule_ProvideFirebaseAuthFactory.provideFirebaseAuth();
+
+          case 9: // com.google.firebase.database.FirebaseDatabase 
+          return (T) AppModule_ProvideFirebaseDatabaseFactory.provideFirebaseDatabase();
+
+          case 10: // com.routex.app.core.firebase.FirebaseInitializer 
+          return (T) new FirebaseInitializer(singletonCImpl.provideFirebaseDatabaseProvider.get(), singletonCImpl.provideFirebaseFirestoreProvider.get());
+
+          case 11: // com.routex.app.maps.data.repository.MapsRepositoryImpl 
+          return (T) new MapsRepositoryImpl(singletonCImpl.provideFirebaseDatabaseProvider.get());
+
+          case 12: // com.routex.app.trips.domain.usecase.ObserveAllTripsUseCase 
+          return (T) new ObserveAllTripsUseCase(singletonCImpl.tripRepositoryImplProvider.get());
+
+          case 13: // com.routex.app.trips.data.repository.TripRepositoryImpl 
+          return (T) new TripRepositoryImpl(singletonCImpl.provideFirebaseFirestoreProvider.get(), singletonCImpl.provideFirebaseAuthProvider.get());
+
+          case 14: // com.routex.app.student.data.repository.StudentRepositoryImpl 
+          return (T) new StudentRepositoryImpl(singletonCImpl.provideFirebaseFirestoreProvider.get());
+
+          case 15: // com.routex.app.core.location.LocationProvider 
+          return (T) new LocationProvider(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
+
+          case 16: // com.routex.app.trips.domain.usecase.ObserveActiveTripForRouteUseCase 
+          return (T) new ObserveActiveTripForRouteUseCase(singletonCImpl.tripRepositoryImplProvider.get());
+
+          case 17: // com.routex.app.trips.domain.usecase.StartTripUseCase 
+          return (T) new StartTripUseCase(singletonCImpl.tripRepositoryImplProvider.get());
+
+          case 18: // com.routex.app.trips.domain.usecase.EndTripUseCase 
+          return (T) new EndTripUseCase(singletonCImpl.tripRepositoryImplProvider.get());
+
+          case 19: // com.routex.app.trips.domain.usecase.ObserveTripUseCase 
+          return (T) new ObserveTripUseCase(singletonCImpl.tripRepositoryImplProvider.get());
+
+          case 20: // com.routex.app.driver.data.repository.DriverRepositoryImpl 
+          return (T) new DriverRepositoryImpl(singletonCImpl.mapsRepositoryImplProvider.get());
+
+          case 21: // com.routex.app.core.network.NetworkMonitor 
+          return (T) new NetworkMonitor(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
+
+          case 22: // com.routex.app.core.data.UserPreferencesRepository 
+          return (T) new UserPreferencesRepository(singletonCImpl.provideDataStoreProvider.get());
+
+          case 23: // androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences> 
+          return (T) AppModule_ProvideDataStoreFactory.provideDataStore(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
+
+          case 24: // com.routex.app.core.notification.FcmTokenRepository 
+          return (T) new FcmTokenRepository(singletonCImpl.provideFirebaseAuthProvider.get(), singletonCImpl.provideFirebaseFirestoreProvider.get());
+
+          case 25: // com.routex.app.maps.data.geofencing.GeofenceManager 
+          return (T) new GeofenceManager(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule));
+
+          default: throw new AssertionError(id);
+        }
+      }
+    }
+  }
+}

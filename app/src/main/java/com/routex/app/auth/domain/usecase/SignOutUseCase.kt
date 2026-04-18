@@ -1,0 +1,10 @@
+package com.routex.app.auth.domain.usecase
+
+import com.routex.app.auth.domain.repository.AuthRepository
+import javax.inject.Inject
+
+class SignOutUseCase @Inject constructor(
+    private val repository: AuthRepository,
+) {
+    suspend operator fun invoke() = repository.signOut()
+}

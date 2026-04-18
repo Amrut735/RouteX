@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="default_web_client_id" translatable="false">606653249058-tg4n1gvletdoeja5ng1r9dlg74far9lf.apps.googleusercontent.com</string>
+    <string name="firebase_database_url" translatable="false">https://routex-85324-default-rtdb.firebaseio.com</string>
+    <string name="gcm_defaultSenderId" translatable="false">606653249058</string>
+    <string name="google_api_key" translatable="false">AIzaSyDv4tFF4IAPM4fp2kI3Y-ug3T45YBzTO4s</string>
+    <string name="google_app_id" translatable="false">1:606653249058:android:4aa19c5f51eb4f6fe87c7b</string>
+    <string name="google_crash_reporting_api_key" translatable="false">AIzaSyDv4tFF4IAPM4fp2kI3Y-ug3T45YBzTO4s</string>
+    <string name="google_storage_bucket" translatable="false">routex-85324.firebasestorage.app</string>
+    <string name="project_id" translatable="false">routex-85324</string>
+</resources>

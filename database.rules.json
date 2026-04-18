@@ -1,0 +1,54 @@
+{
+  "rules": {
+
+    // ── Default deny ──────────────────────────────────────────────────────────
+    ".read":  false,
+    ".write": false,
+
+    // ── bus_locations ─────────────────────────────────────────────────────────
+    // Structure: bus_locations/{routeId}/{ latitude, longitude, speed, … }
+    //
+    // READ  : any authenticated user (students track the bus live)
+    // WRITE : only the driver whose assignedRouteId matches $routeId.
+    //         We verify two conditions:
+    //           1. The user's custom-claim role is 'driver'   (token.role)
+    //           2. The driver's assigned route in RTDB matches $routeId
+    //         This prevents one driver from overwriting another route's location.
+    "bus_locations": {
+      "$routeId": {
+        ".read": "auth != null",
+        ".write": "auth != null
+                   && auth.token.role == 'driver'
+                   && root.child('driver_assignments').child(auth.uid).child('assignedRouteId').val() == $routeId"
+      }
+    },
+
+    // ── driver_assignments ────────────────────────────────────────────────────
+    // Set by the Cloud Function / Admin SDK when an admin assigns a driver.
+    // Structure: driver_assignments/{uid}/{ assignedRouteId, busNumber }
+    //
+    // READ  : the driver reads their own assignment; admins read all
+    // WRITE : only admins (Cloud Function sets this via Admin SDK — ".write":false
+    //         ensures no client can self-assign a route)
+    "driver_assignments": {
+      "$uid": {
+        ".read":  "auth != null && (auth.uid == $uid || auth.token.role == 'admin')",
+        ".write": "auth != null && auth.token.role == 'admin'"
+      }
+    },
+
+    // ── user_roles ────────────────────────────────────────────────────────────
+    // Mirror of Firestore roles, written by the setUserRole Cloud Function.
+    // Gives RTDB rules access to roles without a Firestore cross-read.
+    //
+    // READ  : owner reads their own role; admins read any
+    // WRITE : server-side only (Cloud Function with Admin SDK bypasses rules)
+    "user_roles": {
+      "$uid": {
+        ".read":  "auth != null && (auth.uid == $uid || auth.token.role == 'admin')",
+        ".write": false
+      }
+    }
+
+  }
+}
